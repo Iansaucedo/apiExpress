@@ -1,51 +1,79 @@
-var createError = require('http-errors');
-var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+const createError = require('http-errors')
+const express = require('express')
+const path = require('path')
+const cookieParser = require('cookie-parser')
+const logger = require('morgan')
 
-var app = express();
+const app = express()
 
-var MongoDBUtil = require('./modules/mongodb/mongodb.module').MongoDBUtil;
+// Import routes and utilities
+const indexRouter = require('./routes/index')
+const usersRouter = require('./routes/users')
+const { MongoDBUtil } = require('./modules/mongodb/mongodb.module')
+const UserController = require('./modules/user/user.module')().UserController
 
-var UserController = require('./modules/user/user.module')().UserController;
+// View engine setup
+app.set('views', path.join(__dirname, 'views'))
+app.set('view engine', 'ejs')
 
-app.use(logger('dev'));
-app.use(express.json());
-app.use(express.urlencoded({extended: false}));
-app.use(cookieParser());
+// Middleware
+app.use(logger('dev'))
+app.use(express.json())
+app.use(express.urlencoded({ extended: false }))
+app.use(cookieParser())
+app.use(express.static(path.join(__dirname, 'public')))
 
-MongoDBUtil.init();
+// Initialize MongoDB
+MongoDBUtil.init().catch(err => {
+  console.error('Failed to connect to MongoDB:', err)
+  process.exit(1)
+})
 
-app.use('/users', UserController);
+// Routes
+app.use('/', indexRouter)
+app.use('/users', usersRouter) // Web routes
+app.use('/api/users', UserController) // API routes
 
-app.get('/', function (req, res) {
-    var pkg = require(path.join(__dirname, 'package.json'));
+// API status endpoint
+app.get('/api/status', (req, res) => {
+  const pkg = require(path.join(__dirname, 'package.json'))
+  res.json({
+    name: pkg.name,
+    version: pkg.version,
+    status: 'up',
+    timestamp: new Date().toISOString()
+  })
+})
+
+// 404 handler
+app.use((req, res, next) => {
+  next(createError(404))
+})
+
+// Error handler
+app.use((err, req, res, next) => {
+  // Set locals, only providing error in development
+  res.locals.message = err.message
+  res.locals.error = req.app.get('env') === 'development' ? err : {}
+
+  // Set status code
+  res.status(err.status || 500)
+
+  // Handle both view and API responses
+  if (req.accepts('html')) {
+    res.render('error', {
+      title: 'Error',
+      message: err.message,
+      error: err.status,
+      stack: res.locals.error
+    })
+  } else {
     res.json({
-        name: pkg.name,
-        version: pkg.version,
-        status: 'up'
-    });
-});
+      status: 'error',
+      message: res.locals.message,
+      error: res.locals.error
+    })
+  }
+})
 
-// catch 404 and forward to error handler
-app.use(function (req, res, next) {
-    next(createError(404));
-});
-
-// error handler
-app.use(function (err, req, res, next) {
-    // set locals, only providing error in development
-    res.locals.message = err.message;
-    res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-    // render the error page
-    res.status(err.status || 500);
-
-    res.json({
-        message: res.locals.message,
-        error: res.locals.error
-    });
-});
-
-module.exports = app;
+module.exports = app
