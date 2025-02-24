@@ -1,43 +1,43 @@
-(function () {
-    'use strict';
+;(function () {
+  'use strict'
 
-    module.exports = {
-        init: init
-    };
+  const mongoose = require('mongoose')
+  const mongodbConfig = require('../../config/mongodb/mongodb-config').mongodb
 
-    var mongoose = require('mongoose');
-
-    var mongodbConfig = require('../../config/mongodb/mongodb-config').mongodb;
-
-    function init() {
-        var options = {
-            promiseLibrary: require('bluebird'),
-            useNewUrlParser: true,
-			useUnifiedTopology: true 
-        };
-
-        var connectionString = prepareConnectionString(mongodbConfig);
-       
-        mongoose.connect(connectionString, options)
-            .then(function (result) {
-                console.log("MongoDB connection successful. DB: " + connectionString);
-            })
-            .catch(function (error) {
-                console.log(error.message);
-                console.log("Error occurred while connecting to DB: : " + connectionString);
-            });
+  function prepareConnectionString(config) {
+    let connectionString = 'mongodb://'
+    if (config.user) {
+      connectionString += `${config.user}:${config.password}@`
     }
+    connectionString += `${config.server}/${config.database}`
+    return connectionString
+  }
 
-    function prepareConnectionString(config) {
-        var connectionString = 'mongodb://';
+  async function init() {
+    try {
+      const connectionString = prepareConnectionString(mongodbConfig)
+      const options = {
+        useNewUrlParser: true,
+        useUnifiedTopology: true
+      }
 
-        if (config.user) {
-            connectionString += config.user + ':' + config.password + '@';
-        }
+      await mongoose.connect(connectionString, options)
+      console.log(`MongoDB connected successfully to ${mongodbConfig.database}`)
 
-        connectionString += config.server + '/' + config.database;
+      mongoose.connection.on('error', err => {
+        console.error('MongoDB connection error:', err)
+      })
 
-        return connectionString;
+      mongoose.connection.on('disconnected', () => {
+        console.log('MongoDB disconnected')
+      })
+    } catch (error) {
+      console.error('MongoDB connection failed:', error.message)
+      throw error
     }
+  }
 
-})();
+  module.exports = {
+    init
+  }
+})()
